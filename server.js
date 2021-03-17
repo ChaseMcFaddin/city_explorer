@@ -18,7 +18,7 @@ const client = new pg.Client(process.env.DATABASE_URL);
 // ----- Routes
 app.get('/location', handleLocation);
 app.get('/weather', handleWeather);
-app.get('/trails', handleTrails);
+app.get('/trails', handleParks);
 app.get('/movies', handleMovies);
 app.get('/yelp', handleYelp);
 
@@ -27,7 +27,7 @@ app.use('*', notFound);
 // --------------- Location Handler
 function handleLocation(request, response){
   let city = request.query.city;
-  let key = process.env.GEOCODE_API_KEY;
+  let key = process.env.LOCATION_API_KEY;
 
   const checkSQL = `SELECT * FROM location`;
   client.query(checkSQL)
@@ -75,24 +75,22 @@ function handleWeather(request, response){
     .catch( error => error500(request, response, error));
 }
 
-// -------------------- Trails Handler
-function handleTrails(request, response){
-  const parameters = {
-    key: process.env.TRAIL_API_KEY,
-    lat: request.query.latitude,
-    lon: request.query.longitude,
-    maxResults: 10
-  };
-  const URL = `https://www.hikingproject.com/data/get-trails`;
-  superagent.get(URL)
-    .query(parameters)
-    .then(value => {
-      let trails = value.body.trails.map(newTrail => {
-        return new Trails(newTrail);
-      });
-      response.status(200).send(trails);
+// -------------------- Parks Handler
+function handleParks(req, res) {
+  const PARKS_API_KEY = process.env.PARKS_API_KEY;
+  const park = req.query.formatted_query;
+  const url = `https://developer.nps.gov/api/v1/parks?limit=2&start=0&q=${park}&sort=&api_key=${PARKS_API_KEY}`;
+  superagent.get(url)
+    .then(returnedPark => {
+      const parksArray = returnedPark.body.data;
+      const output = parksArray.map(parkValue => new Park(parkValue));
+      res.send(output);
+      console.log(output);
     })
-    .catch( error => error500(request, response, error));
+    .catch(error => {
+      console.log(error);
+      res.status(500).send('Houston we have a problem!');
+    });
 }
 
 // ------------------------ Movies Handler
@@ -156,18 +154,11 @@ function Weather(obj){
   this.time = new Date(obj.valid_date).toDateString();
 }
 
-//-------- Trails Constructor
-function Trails(obj){
-  this.name = obj.name;
-  this.location = obj.location;
-  this.length = obj.length;
-  this.stars = obj.stars;
-  this.star_votes = obj.starVotes;
-  this.summary = obj.summary;
-  this.trail_url = obj.url;
-  this.conditions = obj.conditionDetails;
-  this.condition_date = obj.conditionDate;
-  this.condition_time = obj.condition_time;
+//-------- Parks Constructor
+function Park(parkInformation) {
+  this.name = parkInformation.name;
+  this.address = `${parkInformation}.addresses[0].line1} ${parkInformation[0]} ${parkInformation}.addresses[0].stateCode} ${parkInformation.addresses[0].postalCode}`;
+  this.fee = parkInformation = parkInformation.desription;
 }
 
 //------------ Movies constructor
@@ -207,7 +198,7 @@ function notFound(request, response) {
 client.connect()
   .then(() => {
     app.listen(PORT, () => {
-      console.log(`It's Alive!`);
+      console.log(`All Hail the Red Dot`);
     });
   })
   .catch(error => {
