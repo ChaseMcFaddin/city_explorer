@@ -7,11 +7,3 @@ CREATE TABLE location (
   latitude FLOAT,
   longitude FLOAT
 );
-
-DROP TABLE IF EXISTS weather;
-
-CREATE TABLE weather (
-  id SERIAL PRIMARY KEY,
-  forecast VARCHAR(255),
-  time VARCHAR(255)
-);

@@ -15,69 +15,71 @@ const app = express();
 app.use(cors());
 const client = new pg.Client(process.env.DATABASE_URL);
 
+const GEOCODE_API_KEY = process.env.GEOCODE_API_KEY;
+const WEATHER_API_KEY = process.env.WEATHER_API_KEY;
+const PARKS_API_KEY = process.env.PARKS_API_KEY;
+const MOVIE_API_KEY = process.env.MOVIE_API_KEY;
+const YELP_API_KEY = process.env.YELP_API_KEY;
+
 // ----- Routes
+app.get('/', helloHandler);
 app.get('/location', handleLocation);
 app.get('/weather', handleWeather);
 app.get('/trails', handleParks);
 app.get('/movies', handleMovies);
 app.get('/yelp', handleYelp);
 
-app.use('*', notFound);
 
-// --------------- Location Handler
-function handleLocation(request, response){
-  let city = request.query.city;
-  let key = process.env.LOCATION_API_KEY;
+// ---------------  Hello Handler ---------------  //
+function helloHandler(request, response){
+  response.send('Hello World');
+}
 
-  const checkSQL = `SELECT * FROM location`;
-  client.query(checkSQL)
-    .then(data => {
-      let dataCheck = data.rows.filter(value => value.search_query === city);
-      if (dataCheck[0]){
-        response.status(200).send(dataCheck[0]);
+function handleLocation(req, res) {
+  const sqlQueryString = 'SELECT * FROM location WHERE search_query=$1;';
+  const sqlQueryArrays = [req.query.city];
+  client.query(sqlQueryString, sqlQueryArrays)
+    .then(result => {
+      if (result.rows.length > 0) {
+        res.send(result.rows[0]);
       } else {
-        const URL = `https://us1.locationiq.com/v1/search.php?key=${key}&q=${city}&format=json`;
-        superagent.get(URL)
-          .then(data => {
-            let location = new Location(data.body[0], city);
-            response.status(200).send(location);
-
-            const SQL = 'INSERT INTO location (search_query, formatted_query, latitude, longitude) VALUES($1, $2, $3, $4) RETURNING *';
-            const safeValues = [location.search_query, location.formatted_query, location.latitude, location.longitude];
-            client.query(SQL, safeValues)
-              .then(data => { //eslint-disable-line
-                //inserts objects in to database city_explorer
-              });
+        const city = req.query.city;
+        const url = `https://us1.locationiq.com/v1/search.php?key=${GEOCODE_API_KEY}&q=${city}&format=json`;
+        superagent.get(url).then(returnedData => {
+          const output = new Location(returnedData.body, req.query.city);
+          // res.send(output);
+          const sqlString = 'INSERT INTO location (search_query, formatted_query, latitude, longitude) VALUES($1, $2, $3, $4);';
+          const sqlArray = [city, returnedData.body[0].display_name, returnedData.body[0].lat, returnedData.body[0].lon];
+          client.query(sqlString, sqlArray).then(() => {
+            res.send(output);
           });
+        }).catch(error => {
+          console.log(error);
+          res.status(500).send('Houston we have a problem!');
+        });
       }
-    })
-    .catch( error => error500(request, response, error));
+    });
 }
 
-//--------------------- Weather handler
-function handleWeather(request, response){
-  const parameters = {
-    key: process.env.WEATHER_API_KEY,
-    lat: request.query.latitude,
-    lon: request.query.longitude,
-    days: 8
-  };
-  const URL = `https://api.weatherbit.io/v2.0/forecast/daily`;
-  superagent.get(URL)
-    .query(parameters)
-    .then(value => {
-      let forecast = value.body;
-      let weatherArray = forecast.data.map(daily => {
-        return new Weather(daily);
-      });
-      response.status(200).send(weatherArray);
-    })
-    .catch( error => error500(request, response, error));
+
+function handleWeather(req, res) {
+  const lat = req.query.latitude;
+  const lon = req.query.longitude;
+  console.log(lat, lon);
+  const url = `https://api.weatherbit.io/v2.0/forecast/daily?key=${WEATHER_API_KEY}&lat=${lat}&lon=${lon}`;
+  superagent.get(url).then(returnedData => {
+    const output = returnedData.body.data.map(weatherInfo => {
+      return new Weather(weatherInfo);
+    });
+    console.log(output);
+    res.send(output);
+  }).catch(error => {
+    console.log(error);
+    res.status(500).send('Houston we have a problem!');
+  });
 }
 
-// -------------------- Parks Handler
 function handleParks(req, res) {
-  const PARKS_API_KEY = process.env.PARKS_API_KEY;
   const park = req.query.formatted_query;
   const url = `https://developer.nps.gov/api/v1/parks?limit=2&start=0&q=${park}&sort=&api_key=${PARKS_API_KEY}`;
   superagent.get(url)
@@ -93,107 +95,87 @@ function handleParks(req, res) {
     });
 }
 
-// ------------------------ Movies Handler
-function handleMovies(request, response){
-  const parameters = {
-    api_key: process.env.MOVIE_API_KEY,
-    query: request.query.search_query,
-  };
-  const URL = 'https://api.themoviedb.org/3/search/movie';
-
-  superagent.get(URL)
-    .query(parameters)
-    .then(value => {
-      let movies = value.body.results.map(newMovie => {
-        return new Movies(newMovie);
-      });
-      response.status(200).send(movies);
+function handleMovies(req, res) {
+  const movie = req.query.search_query;
+  const url = `https://api.themoviedb.org/3/search/movie?api_key=${MOVIE_API_KEY}&query=${movie}`;
+  superagent.get(url)
+    .then(returnedData => {
+      console.log(returnedData.body);
+      const movieArray = returnedData.body.results;
+      const output = movieArray.map(moviesInfo => new Movie(moviesInfo));
+      res.send(output);
     })
-    .catch( error => error500(request, response, error));
+    .catch(error => {
+      console.log(error);
+      res.status(500).send('Houston we have a problem!');
+    });
 }
 
-// ------------------------ Yelp Handler
-function handleYelp(request, response){
-
-  const perPage = 5;
-  const page = request.query.page || 1;
-  const start = ((page - 1) * perPage + 1);
-
-  const parameters = {
-    latitude: request.query.latitude,
-    longitude: request.query.longitude,
-    limit: perPage,
-    offset: start
-  };
-  const URL = 'https://api.yelp.com/v3/businesses/search';
-
-  superagent.get(URL)
-    .auth(process.env.YELP_API_KEY, {type: 'bearer'})
-    .query(parameters)
-    .then(value => {
-      // console.log(value.body.businesses);
-      let yelps = value.body.businesses.map(newYelp => {
-        return new Yelp(newYelp);
-      });
-      response.status(200).send(yelps);
-    })
-    .catch(error => error500(request, response, error));
+function handleYelp(req, res) {
+  const offset = (req.query.page - 1) * 5;
+  const lat = req.query.latitude;
+  const lon = req.query.longitude;
+  const url = `https://api.yelp.com/v3/businesses/search?term=restaurant&limit=5&latitude=${lat}&longitude=${lon}&offset=${offset}`;
+  superagent.get(url).set('authorization', `bearer ${YELP_API_KEY}`)
+    .then(result => {
+      const restaurantArray = result.body.businesses;
+      const output = restaurantArray.map(businesses => new Yelp(businesses));
+      res.send(output);
+    }).catch(error => {
+      console.log(error);
+      res.status(500).send('Oops, I did it again');
+    });
 }
 
-// ----- Location constructor
-function Location(obj, query){
-  this.search_query = query;
-  this.formatted_query = obj.display_name;
-  this.latitude = obj.lat;
-  this.longitude = obj.lon;
+//Objects
+
+function Location(locationData, cityDescrip) {
+  this.search_query = cityDescrip;
+  this.formattted_query = locationData[0].display_name;
+  this.latitude = locationData[0].lat;
+  this.longitude = locationData[0].lon;
 }
 
-// ----- Weather constructor
-function Weather(obj){
-  this.forecast = obj.weather.description;
-  this.time = new Date(obj.valid_date).toDateString();
+function Weather(jsonData) {
+  this.forecast = jsonData.weather.description;
+  this.time = jsonData.datetime;
+
 }
 
-//-------- Parks Constructor
+function Movie(movieData) {
+  this.title = movieData.original_title;
+  this.overview = movieData.overview;
+  this.average_votes = movieData.vote_average;
+  this.total_votes = movieData.vote_count;
+  this.image_url = `https://www.themoviedb.org/t/p/w600_and_h900_bestv2${movieData.poster_path}`;
+  this.popularity = movieData.popularity;
+  this.released_on = movieData.release_date;
+}
+
 function Park(parkInformation) {
   this.name = parkInformation.name;
   this.address = `${parkInformation}.addresses[0].line1} ${parkInformation[0]} ${parkInformation}.addresses[0].stateCode} ${parkInformation.addresses[0].postalCode}`;
   this.fee = parkInformation = parkInformation.desription;
 }
 
-//------------ Movies constructor
-function Movies(obj){
-  // imgPath below from API docs here: https://developers.themoviedb.org/3/getting-started/images
-  const imgPath = `https://image.tmdb.org/t/p/w500`;
-  this.title = obj.title;
-  this.overview = obj.overview;
-  this.average_votes = obj.vote_average;
-  this.total_votes = obj.vote_count;
-  this.image_url = `${imgPath}${obj.poster_path}`;
-  this.popularity = obj.popularity;
-  this.released_on = obj.release_date;
+
+function Yelp(yelpStuff) {
+  this.name = yelpStuff.name;
+  this.image_url = yelpStuff.image_url;
+  this.price = yelpStuff.price;
+  this.rating = yelpStuff.rating;
+  this.url = yelpStuff.url;
+
 }
 
-//------------ Movies constructor
-function Yelp(obj){
-  this.name = obj.name;
-  this. image_url = obj.image_url;
-  this.price = obj.price;
-  this.rating = obj.rating;
-  this.url = obj.url;
-}
+
+
+
+
+
 
 //---------- Error messages---------------
-// ---------------------------------------- 500
-function error500(req, res, err) {
-  console.log('ERROR 500:', err);
-  res.status(500).send(`The thing didn't work so the other thing didn't show up`);
-}
-//----------------------------------------- 404
-function notFound(request, response) {
-  console.log('Error 404');
-  response.status(404).send(`Couldn't load the thing into the thing from the other thing because there are no things to be had here.`);
-}
+
 // ------------------------- Connect to database and server
 client.connect()
   .then(() => {
