@@ -36,7 +36,7 @@ function helloHandler(request, response){
 }
 
 function handleLocation(req, res) {
-  const sqlQueryString = 'SELECT * FROM location WHERE search_query=$1;';
+  const sqlQueryString = 'SELECT * FROM savedlocations WHERE search_query=$1;';
   const sqlQueryArrays = [req.query.city];
   client.query(sqlQueryString, sqlQueryArrays)
     .then(result => {
@@ -48,7 +48,7 @@ function handleLocation(req, res) {
         superagent.get(url).then(returnedData => {
           const output = new Location(returnedData.body, req.query.city);
           // res.send(output);
-          const sqlString = 'INSERT INTO location (search_query, formatted_query, latitude, longitude) VALUES($1, $2, $3, $4);';
+          const sqlString = 'INSERT INTO savedlocations (search_query, formatted_query, latitude, longitude) VALUES($1, $2, $3, $4);';
           const sqlArray = [city, returnedData.body[0].display_name, returnedData.body[0].lat, returnedData.body[0].lon];
           client.query(sqlString, sqlArray).then(() => {
             res.send(output);
