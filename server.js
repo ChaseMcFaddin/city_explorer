@@ -25,7 +25,7 @@ const YELP_API_KEY = process.env.YELP_API_KEY;
 app.get('/', helloHandler);
 app.get('/location', handleLocation);
 app.get('/weather', handleWeather);
-app.get('/trails', handleParks);
+app.get('/parks', handleParks);
 app.get('/movies', handleMovies);
 app.get('/yelp', handleYelp);
 
@@ -55,7 +55,7 @@ function handleLocation(req, res) {
           });
         }).catch(error => {
           console.log(error);
-          res.status(500).send('Houston we have a problem!');
+          res.status(500).send('Oops, I did it again');
         });
       }
     });
@@ -75,7 +75,7 @@ function handleWeather(req, res) {
     res.send(output);
   }).catch(error => {
     console.log(error);
-    res.status(500).send('Houston we have a problem!');
+    res.status(500).send('Oops, I did it again');
   });
 }
 
@@ -91,7 +91,7 @@ function handleParks(req, res) {
     })
     .catch(error => {
       console.log(error);
-      res.status(500).send('Houston we have a problem!');
+      res.status(500).send('Oops, I did it again');
     });
 }
 
@@ -107,7 +107,7 @@ function handleMovies(req, res) {
     })
     .catch(error => {
       console.log(error);
-      res.status(500).send('Houston we have a problem!');
+      res.status(500).send('Oops, I did it again');
     });
 }
 
